@@ -1,0 +1,380 @@
+---
+title: CompoundでLending Dappを作ってみる
+description: CompoundでLending Dappを作ってみる
+date: '2019-12-01T13:30:52.073Z'
+keywords: []
+slug: >-
+  /@taisukemino/compound-jp
+language: jp
+translations: [ "en", "compound" ]
+---
+
+![](https://cdn-images-1.medium.com/max/800/1*IfFeeL2GTDjBw8UUUq2LNQ.png)
+
+### **はじめに**
+
+初めてAirBnBのアイデアを聞いたとき、興奮したのを覚えています。使っていないスペースを旅行者に貸すことで、自分も幾らか儲けることができる。win-winで、かつ資源を有効利用する素晴らしい仕組みだと思いました。
+
+いま同じような興奮を暗号通貨の領域で感じています。[Compound](https://compound.finance/)を使えば、自分が使っていない暗号通貨をそれを有効利用できる誰かに貸して、金利を稼ぐことができます。しかもDaiなどのステーブルコインを使えば、金利は年10％までにもなります。Compoundの仕組み上ほとんど貸しリスクがないことを考えると、定期預金のように使われるようになるでしょう。0.01%ほどしか既存の銀行では金利を稼げないことを考えると、約1000倍です。
+
+この記事では、Compoundを使ってSaiを貸し、金利を稼いだ上で引き出すアプリを作ります。先にコードを読んでしまいたい方は[こちらのリンク](https://github.com/icovo/eht-compound-demo)から見れます。
+
+コードを書く前にまずCompoundの簡単な仕組みを説明します。また、Etherscanでスマートコントラクトとやりとりしてみることで、アプリの中で呼ぶコントラクトの関数を理解します。
+
+注: MakerDAOが複数担保型Daiに移行して、今までの単一担保型DaiをSaiと呼び、複数担保型DaiをDaiと呼ぶと[発表](https://blog.makerdao.com/say-goodbye-to-cdps-and-hello-to-maker-vaults/)しました。よって、この記事でも単一担保型DaiをSaiと呼びます。
+
+### **Compoundの概要**
+
+CompoundはEthereum上の暗号通貨の貸借のためのプロトコルです。非中心的で、誰も支配しない自由参加型のプロトコルであるため、誰でも参加することができます。
+
+金利を稼げる市場をEthとEthereum上のトークンのために作っており、現在７つの市場があります。
+
+![](https://cdn-images-1.medium.com/max/800/1*EnnnsRZNg4wOJQAJQucmpA.png)
+
+この一つ一つの市場ごとにスマートコントラクトがあります。貸し手の人はスマートコントラクトに資産を供給して、金利を得ることができます。逆に、借り手の人はコントラクトに貯蓄されている資産を、担保をロックすることで借り、返済する際に金利を支払います。
+
+貸し手も借り手も金利を指定する必要がなく、金利は市場原理によって決まります。借りる需要が小さければ金利は低くなり、逆に需要が大きければ金利は高くなります。これについては後で詳解します。
+
+さらに、返済締め切りがないモデルのため、締め切りを決める必要がありません。ただ不履行のリスクを軽減するため、借り手は担保をロックしなければならず、担保の価格が一定額を下回った場合には、精算されます。
+
+貸し手と借り手をマッチングし、金利や担保や期間などを決めなければいけないこれまでのモデルに比べると、効率的なのがわかると思います。貯蓄の仕組みを使うことでマッチングのコストを下げ、また、自動的な金利計算式や、あらかじめ決められた担保、そして返済締め切りの撤廃で交渉のコストを下げています。このおかげでユーザーは簡単に速く貸し借りをすることが可能です。
+
+### **均衡利率モデル**
+
+利率は、それぞれの市場の資産の流動性によって、ブロック毎に動的に変動します。流動性が低いと、利率は上がります。逆に流動性が高いと、利率は低くなります。
+
+Compoundの[ダッシュボード](https://app.compound.finance/)を見ると、金利(APR = Annual Percentage Rates)が変動しているのがわかります。流動性はUtilizationという指標で確認することができます(以下はSaiの例)。これは、資産のプールから何パーセントが貸し出されているかという指標です。Utilizationが90%であれば、10%のSaiが残っていることになります。よって、Utilizationが高ければAPRが高くなります。逆にUtilizationが低ければAPRが低くなります。
+
+![](https://cdn-images-1.medium.com/max/800/1*vlyPaqeXsq2tNq2ProEeAQ.png)
+
+### **cToken**
+
+貸し手が金利を得られるという話をしましたが、具体的にはどうやって得るのでしょうか？実際に誰かがSaiをCompoundのコントラクトに送った[トランズアクション](https://etherscan.io/tx/0xc48710fe8e522ee7fd2dee85a6d0724ba42a29b0be826cb6d73ddda4136775f3)を見てみます。7600Saiをコントラクトに送っているのがわかると思いますが、それだけではなく、約361,487のcSaiを代わりに受け取っています。
+![_\*USDの値はEtherscanがCompoundとは違う算出方法で出しているため、間違っているようです。無視してください。_](https://cdn-images-1.medium.com/max/800/1*bnqOP5rBDh5Zob2CL4YWeQ.png)
+_\*USDの値はEtherscanがCompoundとは違う算出方法で出しているため、間違っているようです。無視してください。_
+
+cSaiは、コントラクトに提供したSaiと金利の残高を記録しているERC20トークンです。つまり、cSaiをただ持っているだけで、金利を稼ぐことができます。
+
+cSaiの価値は、毎ブロックごとに金利が足され、上がります。Saiを引き出して金利を稼ぎたい場合は、cSaiをコントラクトに送り返すことで、最初にロックしたSaiに加えて金利を得ることができます(cSaiはこの時点で焼却されます)。
+
+このcSaiはcTokenと一般的に呼ばれるものの一つで、それぞれの市場にこのcTokenが存在します。EthならばcEth、BatならばcBatといった具合です。
+
+このcTokenのERC20のメソッドとその他の拡張メソッドを使うことで、資産を貸したり、引き出したり、借りたり、返済したりすることができます。
+
+### **Etherscanでスマートコントラクトとやりとりしてみる**
+
+次に、Etherscanを使ってスマートコントラクトとやりとりすることで、後で作るアプリの機能をなぞってみます。
+
+MetaMaskでトランズアクションを送るので、MainnetのEthとSaiが必要になります。EthはあるけどSaiはないという方は、[Uniswap](https://uniswap.exchange/swap)で交換することができます。
+
+Saiを貸し、金利を稼いだのちに引き出すのには３つのステップがあります。
+
+1.  Saiトークンコントラクトのapprove関数を呼び、cSaiコントラクトにSaiを送る許可を与える
+2.  cSaiコントラクトのmint関数を呼び、Saiを提供して、cSaiを代わりに得る
+3.  cSaiコントラクトのredeemUnderlying関数を呼び、cSaiとSaiを交換する
+
+#### **1\. approve関数**
+
+Etherscanの[Saiトークンコントラクトのページ](https://etherscan.io/token/0x89d24a6b4ccb1b6faa2625fe562bdd9a23260359)に行って、Connect to Web3をいうリンクをクリックし、MetaMaskにログインしてください。これでMetaMaskを使ってトランズアクションが送れるようになります。
+
+Saiを貸す前に、cSaiコントラクトがSaiを送れるようにする必要があります。そのために`approve`関数を呼びます。Write Contractというタブに行き、下にスクロールすると、`approve`関数があります。ここに送るのを許可したいSaiの量を入れます。
+
+![](https://cdn-images-1.medium.com/max/800/1*vJV4HiUPEL-mP8K_Wh2fSg.png)
+
+Solidityは固定小数点で、Saiトークンコントラクトは小数点を`18`に設定しているので、0を18個足す必要があることに注意してください。
+
+1Saiを送ることを許可したければ、以下のようになります。
+```
+1000000000000000000  
+// 1 * 10 ** 18
+```
+Writeボタンをクリックし、トランズアクションを送ります。トランズアクションがマインされるのを待ちます。遅い場合はガスを積んでみてください。
+
+トランズアクションがうまくいれば、cSaiコントラクトは1Saiを送る許可を与えられています。
+
+#### **2\. mint関数**
+
+次に[cSaiコントラクトのページ](https://etherscan.io/token/0xf5dce57282a584d2746faf1593d3121fcac444dc)に行きます。再度Connect to Web3のリンクをクリックし、MetaMaskにログインします。
+
+[mint関数](https://compound.finance/developers/ctokens#mint)でSaiをcSaiコントラクトに提供することで、発行されたcSaiを得ることができます。
+```
+function mint(uint mintAmount) returns (uint)
+```
+mint関数に貸し出したいSaiの量を指定します。
+
+![](https://cdn-images-1.medium.com/max/800/1*ld1ieZeNE8uzG62XUh0ZNg.png)
+
+Writeボタンをクリックして、トランズアクションを送ります。
+
+1Saiがコントラクトに送られ、cSaiを代わりに受け取っているのがEtherscanで[見れる](https://etherscan.io/tx/0x5db3e70e1989855dd23398dbd4d7a80f5b7dc66dc86021c4bf9a683b4a43ef30)と思います。
+
+#### **3\. redeemUnderlying関数**
+
+Saiを引き出すのには大きく２つの方法があります。引き出すSaiの量を指定するか、Saiと交換するcSaiの量を指定するかです。
+
+redeemUnderlying関数はSaiの量を引数にとり、redeem関数はcSaiの量を引数に取ります。ここではアプリをシンプルにするために[redeemUnderlying関数](https://compound.finance/developers/ctokens#redeem-underlying)を使います。
+```
+function redeemUnderlying(uint redeemAmount) returns (uint)
+```
+引き出したいSaiの量を指定します。
+
+![](https://cdn-images-1.medium.com/max/800/1*x1C6hUvMRohq6i1RpMlDUg.png)
+
+Writeボタンを押してトランズアクションを送ります。
+
+cSaiを返却し、代わりにSaiを受け取っていることが[わかります](https://etherscan.io/tx/0x662c8741c930c598e6bb12a07570b91656f4ad93b60d6cec67c96efc9d1110c4)。
+
+また、自分のアカウントにまだcSaiが残っていることがわかると思います。これがcDaiを持っている間に貯まった金利です。
+
+### **セットアップ**
+
+ではここからアプリを作っていきます。Saiを貸して、金利を稼いだ上で引き出すJavaScriptのアプリです。[こちらのレポジトリ](https://github.com/icovo/eht-compound-demo)でコードを確認できます。
+
+**プライベートキーとアドレスの取得**  
+[vanity-eth](https://vanity-eth.tk/)からプライベートキーとアドレスを取ってきてください。Generateボタンを押すと一番下に生成されたプライベートキーとアドレスが出てきます。安全ではないので、テスト目的以外で使わないようにしましょう。
+
+**EthとSaiを取得したアドレスに送る**  
+上で取得したアドレスにEthとSaiを送ります。Ethは0.01あればガス代を払えます。Saiは1だけ使います。
+
+_\*本当はテストネットを使いたいのですが、トークンを入手するのが難しいためやむなくメインネットを使っています。_
+
+**Infuraのエンドポイントを取得**  
+Ethereumのネットワークとやりとりするためのプロバイダーとして[Infura](https://infura.io/)を使います。Infuraに登録して新しいプロジェクトを作ってからMainnetのエンドポイントを取得してください。URLは以下のようなフォーマットになります。
+```
+https://mainnet.infura.io/v3/[PROJECT_ID]
+```
+**Npmのプロジェクトを作る**
+```
+mkdir eht-compound-demo  
+cd eht-compound-demo/  
+npm init --yes
+```
+\*npmとnodejsが入っていない方は[こちら](https://nodejs.org/en/)からダウンロードできます。
+
+**gitをinitializeする**
+```
+git init
+```
+**web3のパッケージをインストールする**
+```
+npm i —-save web3@1.2.1
+```
+`web3`はEthereumのJavaScript APIと呼ばれています。テストネットを含めたEthereumのネットワークへのインターフェースです。JavaScriptのアプリからEthereumのノードとやりとりしたり、ブロックチェーン上にデプロイされているスマートコントラクトとやりとりすることもできます。
+
+**ethereumjs-txパッケージをインストールする**
+```
+npm i --save ethereumjs-tx@1.3.7
+```
+ethereumjs-txは、トランズアクションオブジェクトを生成したり、サインするのに使います。
+
+**package.jsonにスクリプトを追加**
+```
+"scripts": {  
+  “approve-sai-main": "node --experimental-modules ./approveSaiMain.mjs",  
+  “supply-sai-main": "node --experimental-modules ./supplySaiMain.mjs",  
+  “withdraw-sai-main": "node --experimental-modules ./withdrawSaiMain.mjs"  
+},
+```
+mjsは、ES6の文法で書くための拡張子です。
+
+**saiTokenContract.mjsとcSaiContract.mjsを作成**  
+[ここ](https://github.com/icovo/eht-compound-demo/blob/master/saiTokenContract.mjs)と[ここ](https://github.com/icovo/eht-compound-demo/blob/master/cSaiContract.mjs)からファイルをコピーしてきてください。
+
+これらのファイルでは、SaiトークンコントラクトとcSaiトークンコントラクトのabiとアドレスを変数宣言し、エクスポートしています。
+
+### **Saiを貸し出す機能を実装する**
+
+ここからはコードを書いていきます。まずはSaiを貸し出す機能を実装します。
+
+この機能を実装するためにファイルを２つ作ります。
+
+1.  `approveSaiMain.mjs`
+2.  `supplySaiMain.mjs`
+
+#### **1\. approveSaiMain.mjs**
+
+**ファイル作成**  
+[approveSaiMain.mjs](https://github.com/icovo/eht-compound-demo/blob/master/approveSaiMain.mjs)というファイルを作ります。
+
+**パッケージのインポート**
+```
+import Web3 from "web3";  
+import EthTx from "ethereumjs-tx";
+```
+**cSaiContractとsaiTokenContractのインポート**
+```
+import cSaiContract  from './cSaiContract';  
+import saiTokenContract from ‘./saiTokenContract';
+```
+**Web3のセットアップ**  
+Infuraをweb3のプロバイダーとして設定します
+```
+const web3 = new Web3(  
+  new Web3.providers.HttpProvider("https://mainnet.infura.io/v3/[YOUR_PROJECT_ID]"  
+  )  
+);
+```
+**アドレスとプライベートキーの定数宣言**
+```
+const addressFrom = “[YOUR_ADDRESS]";  
+const privKey = “[YOUR_PRIVATE_KEY]";
+```
+**Saiトークンコントラクトのインスタンスを作成**  
+web3の`Contract`というメソッドにSaiトークンコントラクトのabiとアドレスを渡すことでSaiトークンコントラクトのインスタンスを作成します。
+```
+const saiTokenContractInstance = new web3.eth.Contract(  
+  JSON.parse(saiTokenContract.saiTokenContractAbi),  
+  saiTokenContract.saiTokenContractAddress  
+);
+```
+これでSaiトークンコントラクトのメソッドを呼べるようになります。
+
+**approve関数に渡す定数の宣言**
+```
+const ADDRESS_SPENDER = cSaiContract.cSaiContractAddress;  
+const TOKENS = web3.utils.toHex(-1);
+```
+先ほどは`1 * 10 ** 18`の値を第二引数に渡しましたが、実際にアプリを作る際は`-1`を渡すのが常套手段です。ユーザーからすると毎回`approve`関数を呼びたくはないので、最大値を渡して、それ以降は`approve`関数を呼ばなくてもSaiを貸し出せるようにします。なぜ最大値にするために-1という数値を渡すのかを理解したい方は、英語ですが[こちらのリンク](https://ethereum.stackexchange.com/a/33835)を参考にしてください。
+
+**上の定数に入れた値をapprove関数に渡してabiをエンコード**
+```
+const approveEncodedABI = saiTokenContractInstance.methods  
+  .approve(ADDRESS_SPENDER, TOKENS)  
+  .encodeABI();
+```
+**sendSignedTx関数の作成**  
+トランズアクションオブジェクトにサイン/シリアライズなどをして、それをEthereumネットワークにブロードキャストする関数を作成。
+```
+function sendSignedTx(transactionObject, cb) {  
+  let transaction = new EthTx(transactionObject);  
+  const privateKey = new Buffer.from(privKey, "hex");  
+  transaction.sign(privateKey);  
+  const serializedEthTx = transaction.serialize().toString("hex");  
+  web3.eth.sendSignedTransaction(`0x${serializedEthTx}`, cb);  
+}
+```
+**トランズアクションオブジェクトをsendSignedTx関数に渡して実行**
+```
+web3.eth.getTransactionCount(addressFrom).then(transactionNonce => {  
+  const transactionObject = {  
+    chainId: 1,  
+    nonce: web3.utils.toHex(transactionNonce),  
+    gasLimit: web3.utils.toHex(100000),  
+    gasPrice: web3.utils.toHex(5000000000),  
+    to: saiTokenContract.saiTokenContractAddress,  
+    from: addressFrom,  
+    data: approveEncodedABI  
+  };
+
+sendSignedTx(transactionObject, function(error, result){  
+    if(error) return console.log("error ===>", error);  
+    console.log("sent ===>", result);  
+  })  
+}  
+);
+```
+`gasLimit`は`100000`に設定します。`gasPrice`は執筆時点では高めに設定していますが、[EthGasStation](https://www.ethgasstation.info/)で最適な額を調べて変更してみてください。EthGasStationでは単位が`gwei`なので、[Ethereum unit converter](https://www.etherchain.org/tools/unitConverter)を使って`wei`に変更してください。
+
+**ファイルを走らせる**
+```
+npm run approve-sai-main
+```
+`_0xa18d71767ba95b95831fbf3a441494165002bc5f4104afdb0406511ebce7cbe3_`のようなトランズアクションハッシュが返ってくるので、それをEtherscanで検索して、トランズアクションの詳細をみてみてください(以下は[例](https://etherscan.io/tx/0xa18d71767ba95b95831fbf3a441494165002bc5f4104afdb0406511ebce7cbe3))。仮にトランズアクションが通らない場合は、ガスを積んで、トランズアクションを再度送ってみてください。
+
+![](https://cdn-images-1.medium.com/max/800/1*mX4KWdGe1ut7wSKYQWOyYQ.png)
+
+“Input Data”のところでapprove関数が呼ばれているのがわかります。
+
+#### **2\. supplySaiMain.mjs**
+
+次は[supplySaiMain.mjs](https://github.com/icovo/eht-compound-demo/blob/master/supplySaiMain.mjs)というファイルを作り、`mint`関数を呼びます。ほとんどのコードが被っているため、その箇所は割愛します。最終的なコードは、[レポジトリ](https://github.com/icovo/eht-compound-demo/blob/master/supplySaiMain.mjs)で確認してください。
+
+`mint`関数に、貸し出したいSaiの値を渡してabiエンコードします。
+```
+const MINT_AMOUNT = web3.utils.toHex(1 * 10 ** 18);
+
+const mintEncodedABI = cSaiContractInstance.methods  
+  .mint(MINT_AMOUNT)  
+  .encodeABI();
+```
+このAbiをトランズアクションオブジェクトの`data`プロパティに渡します。`gasLimit`は`200000`に設定しています。
+```
+web3.eth.getTransactionCount(addressFrom).then(transactionNonce => {  
+  const transactionObject = {  
+    chainId: 1,  
+    nonce: web3.utils.toHex(transactionNonce),  
+    gasLimit: web3.utils.toHex(200000),  
+    gasPrice: web3.utils.toHex(5000000000),  
+    to: cSaiContract.cSaiContractAddress,  
+    from: addressFrom,  
+    data: mintEncodedABI  
+  };
+
+sendSignedTx(transactionObject, function(error, result){  
+    if(error) return console.log("error ===>", error);  
+    console.log("sent ===>", result);  
+  })  
+}  
+);
+```
+ファイルを走らせます。
+```
+npm run supply-sai-main
+```
+1Saiが自分のアカウントからcSaiコントラクトに送られ、代わりにcSaiを受け取っていることが[わかります](https://etherscan.io/tx/0x9f9d520b8d34c7f565ce2bef50c7d66679fba076b38452045bd04bb6694be7d6)。
+
+![](https://cdn-images-1.medium.com/max/800/1*O7-kVcLynMyu9QDXP_Okjg.png)
+
+### **Saiを引き出す機能の実装**
+
+最後にSaiを引き出す機能の実装です。今回も被っている箇所は割愛します。最終的なコードは[ここ](https://github.com/icovo/eht-compound-demo/blob/master/withdrawSaiMain.mjs)からみられます。`withdrawSaiMain.mjs`というファイルを作り、`redeemUnderlying`関数を呼びます。
+
+`redeemUnderlying`関数に、引き出したいSaiの値を渡してabiエンコードします。
+```
+const REDEEM_AMOUNT = web3.utils.toHex(1 * 10 ** 18);
+
+const redeemUnderlyingEncodedABI = cSaiContractInstance.methods  
+  .redeemUnderlying(REDEEM_AMOUNT)  
+  .encodeABI();
+```
+このAbiをトランズアクションオブジェクトの`data`プロパティに渡します。`gasLimit`は`400000`に設定しています。
+```
+web3.eth.getTransactionCount(addressFrom).then(transactionNonce => {  
+  const transactionObject = {  
+    chainId: 1,  
+    nonce: web3.utils.toHex(transactionNonce),  
+    gasLimit: web3.utils.toHex(400000),  
+    gasPrice: web3.utils.toHex(5000000000),  
+    to: cSaiContract.cSaiContractAddress,  
+    from: addressFrom,  
+    data: redeemUnderlyingEncodedABI  
+  };
+
+sendSignedTx(transactionObject, function(error, result){  
+    if(error) return console.log("error ===>", error);  
+    console.log("sent ===>", result);  
+  })  
+}  
+);
+```
+ファイルを走らせます。
+```
+npm run withdraw-sai-main
+```
+cSaiがcSaiコントラクトに戻り、Saiが引き出されているのが[わかります](https://etherscan.io/tx/0xb359a08404fbedbf245a365644ef67bb4e1c6928749ce978fe1e8f001372246e)。
+
+![](https://cdn-images-1.medium.com/max/800/1*ps8SLIp3roXEGqiA0dE6gg.png)
+
+また、自分のアカウントのcSaiのバランスを見ると、まだ少しだけ残っているのが[わかります](https://etherscan.io/token/0xf5dce57282a584d2746faf1593d3121fcac444dc?a=0xcc84e428b30ea976f932d77293df4ba8edd7307f)。これが稼いだ金利です。
+
+![](https://cdn-images-1.medium.com/max/800/1*aUJ3NXaPfP79ypGo_80bjw.png)
+
+### **まとめ**
+
+貸借のための分散型プロトコルであるCompoundを使えば、誰でも自由にEthereum上の特定の暗号通貨を貸し借りできます。また、
+
+マッチングのコストや交渉のコストを減らしたことで、既存のクリプトの貸借の仕組みに比べ速く簡単に取引をすることが可能です。
+
+また開発者からも視点から見ても、スマーとコントラクトの関数を３つ呼ぶだけで、Saiを貸して金利を得た上で引き出すアプリを簡単に作れることがわかったと思います。ぜひこのアプリをdappやwalletに統合してみてください。
+
+この記事を通じて、クリプトのシェアリングエコノミーの可能性を感じることができたでしょうか？最後まで読んでくれてありがとうございます！

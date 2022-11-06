@@ -1,0 +1,78 @@
+---
+title: >-
+  ELI5: uint256 in Solidity
+description: >-
+  `uint256` is perhaps the most used value types in Solidity. And yet you might not be familiar with it if you’ve been writing a high level language like JavaScript or Python..
+date: '2021-10-16T12:27:29.040Z'
+keywords: []
+slug: >-
+  /@taisukemino/uint256
+language: "en"
+---
+
+`uint256` is perhaps the most used value type in Solidity. And yet you might not be familiar with it if you’ve been writing a high-level language like JavaScript or Python. In this post, I explain what `uint256` is in plain English. I will break `uint256` down into two parts(`uint` and `256`) and explain each of them.
+
+## uint
+In Solidity and other languages like C#, `int` is a signed integer and `uint` is an unsigned integer.
+
+A numeric variable is signed if it can represent both positive and negative numbers:
+
+```
+-2
++2
+```
+\
+Whereas, a numeric variable is unsigned if it can only represent non-negative numbers(zero or positive numbers):
+
+```
+2
+2
+```
+\
+Thus, `uint256` means this value type can handle only non-negative numbers.
+
+## 256
+Next, let’s think about the `256` part. In short, `256` means the size of the value stored in this value type should be less than 256 bits. 256 bits means that you can store 256 digits in the base 2 number. Let me explain what the base 2 number is and how big 256 digits are.
+
+#### The Base 2 Number
+What is the base 2 number? Normally, we count in the base ten number(aka. decimal), which means we represent every number using ten symbols(0 ~ 9). In this counting system, once we get over the symbol 9, we combine the symbols to create new numbers:
+
+```
+0 1 2 3 4 5 6 7 8 9
+10 11 12 13 14 15 16 17 18 19
+```
+\
+The “base” of a counting system is the number of symbols used to represent all the numbers in the world. We, humans, primarily use the base 10 probably because we have ten fingers.
+
+In the computer age, the base 2 number system(aka. binary or bits) is the basic building block of information. When counting in the base 2, a computer uses only two symbols(0 and 1). Once a computer gets over the symbol 1, it combines the symbols to create new numbers:
+```
+0 1
+10 11
+```
+\
+Why does a computer uses the base 2 system at all? The short answer is because every number in a computer is an electrical signal. It is reliable when you distinguish only between the “on” state and the “off” state as opposed to setting a specific voltage for each symbol with the base 10.
+
+#### The Size of 256 Bits
+Now, as I said earlier, 256 bits number can store 256 digits in the base 2 number. But how big is this? To get a sense of its size, we will convert 256 bits number into decimals.
+
+But let’s start from an easy example. 8-bit numbers have eight digits in the base 2 number. The max value in 8-bit binary number is `11111111`.
+
+Here is how much `uint8` can store in decimals:
+
+```
+2^7 * 1 + 2^6 * 1 + 2^5 * 1 + 2^4 * 1 + 2^3 * 1 + 2^2 * 1 + 2^1 * 1 + 2^0 * 1 
+= 2^8 - 1
+= 255
+```
+\
+By the same token, `uint256` can store in decimals:
+```
+2^256 - 1
+= 115792089237316195423570985008687907853269984665640564039457584007913129639935
+```
+\
+You can see that `uint256` is a pretty big number.
+
+## Wrapping Up
+
+`uint256` is non-negative integers which can store up to `115792089237316195423570985008687907853269984665640564039457584007913129639935` in decimal.

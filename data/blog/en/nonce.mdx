@@ -1,0 +1,43 @@
+---
+title: >-
+  The Account Nonce in Ethereum Explained
+description: >-
+  Gas is a commodity like oil. Your car needs oil to run it. By the same token, the Ethereum Virtual Machine(EVM) needs gas to run it.
+date: '2020-01-31T12:27:29.040Z'
+keywords: []
+slug: >-
+  /@taisukemino/nonce
+language: "en"
+---
+
+I know it’s confusing but there are two types of a nonce in Ethereum:
+1. the proof of work nonce that miners try to find to solve a hash puzzle and
+2. the account nonce as a transaction counter in each account
+
+In this post, I will explain what the account nonce is.
+
+When you send a transaction and once it’s mined, your account increments a value called nonce by one. The nonce keeps track of how many transactions the sender has sent overtime.
+
+Beware that the nonce is the transaction counter of the sending address. It doesn’t include transactions received by the address.
+
+Let’s say you own this address `0x1b24d15c365428e562c95962a9de4e486cf9ca26`. You can see the list of transactions associated with this address [here](https://ropsten.etherscan.io/txs?a=0x1b24d15c365428e562c95962a9de4e486cf9ca26&ps=100&p=1).
+
+In [this transaction](https://ropsten.etherscan.io/tx/0x0aba1bad9524a118bb9e69997c32d751e384de44ce2eb995e0fd72b59f9c1d2e) below, the nonce is `89`. You can see that it is sent from your address. Thus, this means your address has sent `90` transactions up to this point(it starts from `0`).
+
+![](/static/images/nonce/nonce_one.png)
+
+Let’s take a look at [another transaction](https://ropsten.etherscan.io/tx/0x3353a920eded418db1c5f0decad4c0ef3e12a80f129476ed815040489952e1e5) below. This transaction’s nonce is `119`. Does this mean your address has sent `120` transactions up to this point? No. Since the transaction is sent from `0xa7d41f49dadca972958487391d4461a5d0e1c3e9`, the nonce is the counter for this address, not yours.
+
+![](/static/images/nonce/nonce_two.png)
+
+You can see that both incoming and outgoing transactions to/from your address have the account nonce, but don’t get confused. Only outgoing transactions influence your nonce. The nonce you can see in incoming transactions is for other accounts.
+
+There are some reasons why the account nonce is helpful. First, it allows us to send transactions in order.
+
+Without the nonce, the order in which you send transactions might be ignored. Let’s say you send two transactions within 10 seconds. You might think that miners process them in order. But in a distributed system, there is no guarantee that they collect your first transaction first and the second one second. Yet, if you have the account nonce, miners need to process them in order. The second transaction with a nonce of `1` cannot be processed until the first transaction with a nonce of `0` is processed.
+
+Second, it protects us from replay attacks. Without the nonce, a sender could double-spend by sending the same transaction twice. Let’s say Alice signs a transaction that sends some ether to Bob. Without the nonce, Bob could copy this signed transaction and keep propagating it until Alice loses all her money. Since the transaction is not unique without a nonce, Bob can duplicate the transaction. He doesn’t even have to sign it as he can find the signed transaction in the network already.
+
+When a transaction includes the nonce, every single transaction is unique. That is, even with the same amount and the same recipient address. And the Ethereum network won’t accept a new outgoing transaction with the same nonce. This protects us against replay attacks. If Bob copies a transaction and propagates that again, it will simply be rejected.
+
+If you want to dig more, you can learn about the specification [here](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md).
