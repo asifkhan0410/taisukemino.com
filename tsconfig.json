@@ -28,13 +28,6 @@
     }
   },
   "include": [
-    "components",
-    "layouts",
-    "lib",
-    "pages",
-    "scripts",
-    "next-env.d.ts",
-    "next.config.js",
     "**/*.ts",
     "**/*.tsx"
   ],
