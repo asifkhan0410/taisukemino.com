@@ -66,22 +66,22 @@ function RenderResults() {
 export default function App({ Component, pageProps }) {
   const router = useRouter();
 
-  // useEffect(() => {
-  //   Fathom.load("RVGOXTVB", {
-  //     includedDomains: ["taisukemino.com"],
-  //   });
+  useEffect(() => {
+    Fathom.load("RVGOXTVB", {
+      includedDomains: ["taisukemino.com"],
+    });
 
-  //   function onRouteChangeComplete() {
-  //     Fathom.trackPageview();
-  //   }
-  //   // Record a pageview when route changes
-  //   router.events.on("routeChangeComplete", onRouteChangeComplete);
+    function onRouteChangeComplete() {
+      Fathom.trackPageview();
+    }
+    // Record a pageview when route changes
+    router.events.on("routeChangeComplete", onRouteChangeComplete);
 
-  //   // Unassign event listener
-  //   return () => {
-  //     router.events.off("routeChangeComplete", onRouteChangeComplete);
-  //   };
-  // }, []);
+    // Unassign event listener
+    return () => {
+      router.events.off("routeChangeComplete", onRouteChangeComplete);
+    };
+  }, []);
 
   return (
     <KBarProvider actions={actions}>
