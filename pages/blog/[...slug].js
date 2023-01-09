@@ -44,10 +44,10 @@ export async function getStaticProps({
   );
   const prev = allPosts[postIndex + 1] || null;
   const next = allPosts[postIndex - 1] || null;
-  const post = await getFileBySlug("blog", params.slug.join("/"), otherLocale);
+  const post = await getFileBySlug("blog", params.slug.join("/"), otherLocale, locale);
   const authorList = post.frontMatter.authors || ["tai"];
   const authorPromise = authorList.map(async (author) => {
-    const authorResults = await getFileBySlug("authors", [author], otherLocale);
+    const authorResults = await getFileBySlug("authors", [author], otherLocale, locale);
     return authorResults.frontMatter;
   });
   const authorDetails = await Promise.all(authorPromise);
